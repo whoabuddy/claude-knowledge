@@ -1,0 +1,14 @@
+{
+  "name": "claude-hygiene",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "hygiene": "bun run src/hygiene.ts"
+  },
+  "dependencies": {
+    "commander": "^13.1.0"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.2.0"
+  }
+}
