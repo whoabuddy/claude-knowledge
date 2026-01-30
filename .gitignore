@@ -11,6 +11,9 @@ logs/*.raw.json
 node_modules/
 bun.lock
 
+# Quest planning (local state)
+.planning/
+
 # Keep the HTML viewer and curated logs
 !logs/index.html
 !logs/*.summary.md
