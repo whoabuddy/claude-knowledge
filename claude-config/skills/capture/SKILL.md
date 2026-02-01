@@ -1,6 +1,6 @@
 ---
 name: capture
-description: Review session work and propose knowledge captures for human review. Scans git commits, changed files, and patterns used across repos to generate structured knowledge items. Part of the memory capture/review workflow.
+description: Review session work and propose knowledge captures for human review. Scans git commits, changed files, and patterns used across repos to generate structured knowledge items. Includes review workflow to approve/reject/edit pending captures before persisting to the knowledge base.
 allowed-tools: Bash, Read, Write, Edit, Glob, Grep
 ---
 
@@ -14,6 +14,37 @@ Reviews work done in the current session and proposes knowledge items for human 
 /capture              # Review today's session work
 /capture week         # Review the past week
 /capture 2026-01-15   # Review a specific date
+/capture review       # Process pending captures (approve/reject/edit)
+/capture review all   # Process all pending captures in batch
+/capture status       # Show pending/approved/rejected counts
+```
+
+## Subcommands
+
+### /capture (default) - Generate Captures
+
+Scans git activity and generates new captures to `~/logs/captures/pending/`.
+
+### /capture review - Process Pending
+
+Interactive workflow to review pending captures:
+
+1. **List pending** - Show all captures awaiting review
+2. **Present each** - Display content, metadata, confidence
+3. **Ask action** - Approve, reject, or edit
+4. **Process** - Persist approved, archive rejected
+
+Options:
+- `review` - Process one capture at a time
+- `review all` - Batch process all pending captures
+
+### /capture status - Show Counts
+
+Display summary of capture activity:
+```
+Pending:  3 captures awaiting review
+Approved: 12 captures persisted this month
+Rejected: 2 captures archived
 ```
 
 ## What It Does
@@ -57,6 +88,44 @@ Observed in aibtcdev/aibtc-contracts during session review.
 Commit: abc123 "fix: propagate transfer errors properly"
 ```
 
+## Review Workflow
+
+### Approve
+
+When approved, the capture is:
+1. Moved to `~/logs/captures/approved/`
+2. Persisted to the knowledge base at `~/dev/whoabuddy/claude-knowledge/`
+
+Destination by category:
+
+| Category | Destination | Action |
+|----------|-------------|--------|
+| `nugget` | `nuggets/{topic}.md` | Append to existing or create new |
+| `pattern` | `patterns/{name}.md` | Create new file |
+| `runbook` | `runbook/{task}.md` | Create new file |
+| `decision` | `decisions/{nnnn}-{name}.md` | Create with next ADR number |
+
+### Reject
+
+When rejected, the capture is:
+1. Moved to `~/logs/captures/rejected/`
+2. Reason added to frontmatter
+
+Rejection reasons:
+- Duplicate of existing knowledge
+- Too specific (not reusable)
+- Needs more validation
+- Not accurate
+- Custom reason
+
+### Edit
+
+When editing:
+1. Display current content
+2. Ask what to change (content, category, confidence)
+3. Apply edits
+4. Then approve or reject
+
 ## Categories
 
 | Category | Description | Destination |
@@ -98,7 +167,8 @@ done
 
 - **After work sessions**: Run `/capture` to review the day
 - **With /daily**: Optionally call capture at end of daily summary
-- **Review pending**: Use `/capture review` (Phase 2) to approve/reject
+- **Morning review**: `/capture review` to process pending items
+- **With /daily-brief**: Surfaces pending capture count
 
 ## Workflow
 
@@ -120,8 +190,11 @@ See `runbook/knowledge-capture.md` in the knowledge base for full workflow docum
 - Lower confidence for inferred patterns (might be one-off)
 - Captures are proposals - human reviews before persistence
 - Don't capture sensitive info (credentials, internal URLs)
+- Review pending captures in morning (with daily-brief) or before EOD
 
 ## Example Session
+
+### Generating Captures
 
 ```
 > /capture
@@ -149,4 +222,35 @@ Generated 3 captures:
 
 Captures written to ~/logs/captures/pending/
 Use /capture review to approve/reject.
+```
+
+### Reviewing Captures
+
+```
+> /capture review
+
+Pending captures: 3
+
+---
+## Capture 1/3: Clarity: stacks-block-height vs block-height
+
+Category: nugget
+Confidence: high
+Source: aibtcdev/aibtc-contracts
+
+Content:
+Use `stacks-block-height` instead of `block-height` for current block.
+`block-height` is legacy and deprecated.
+
+---
+
+Action? [a]pprove / [r]eject / [e]dit / [s]kip
+
+> a
+
+Approved! Persisted to nuggets/clarity.md
+
+---
+## Capture 2/3: Hono middleware error handling
+...
 ```
