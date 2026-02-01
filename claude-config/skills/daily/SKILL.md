@@ -11,8 +11,9 @@ Generates and publishes a team-friendly daily summary of work across all git rep
 ## Usage
 
 ```bash
-/daily           # Uses today's date
-/daily 2026-01-05  # Specific date
+/daily              # Uses today's date
+/daily 2026-01-05   # Specific date
+/daily --capture    # Run capture scan after summary (optional)
 ```
 
 ## Configuration
@@ -108,3 +109,36 @@ Outputs markdown tables showing:
 - XP earned per companion (repo)
 - Tool usage breakdown
 - Session highlights (prompts, top tools)
+
+## Optional Capture Integration
+
+Use `--capture` flag to scan for knowledge captures after generating the daily summary:
+
+```bash
+/daily --capture    # Summary + capture scan
+```
+
+This runs the `/capture` skill after the summary is complete:
+1. Scans git activity for the same date
+2. Generates capture candidates using pattern matching
+3. Writes pending captures to `~/logs/captures/pending/`
+4. Shows capture candidates for later review
+
+You can also chain commands manually:
+```bash
+/daily && /capture  # Equivalent to --capture flag
+```
+
+The capture step is optional - skip it if you're in a hurry or if the day's work doesn't warrant knowledge extraction.
+
+### When to Use --capture
+
+Good for:
+- End of productive work sessions
+- Days with significant debugging or learning
+- When you've solved a tricky problem
+
+Skip when:
+- Quick administrative tasks
+- Meeting-heavy days with little code work
+- Already reviewed captures recently
