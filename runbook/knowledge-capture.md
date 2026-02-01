@@ -592,6 +592,76 @@ Access log stored at `~/dev/whoabuddy/claude-knowledge/.access-log.json`.
 4. **Archive vs delete** - Prefer archive over delete; knowledge might be useful later
 5. **Track tier stats** - Use `/capture status --tiers` to monitor balance
 
+## Knowledge Retrieval
+
+### Searching Knowledge
+
+Search across all tiers with `/capture search`:
+
+```bash
+/capture search "clarity errors"           # Search all tiers
+/capture search "stx" --tier warm          # Filter by tier
+/capture search "api" --category patterns  # Filter by category
+```
+
+Search features:
+- **Tier-aware ranking**: Warm > cold > icebox in result ordering
+- **Recency boost**: Recently accessed items rank higher
+- **Frequency boost**: Frequently accessed items rank higher
+- **Keyword matching**: Title, content, and extracted keywords
+
+### Context-Aware Suggestions
+
+Get relevant knowledge based on current working directory:
+
+```bash
+/capture suggest                    # Analyze current directory
+/capture suggest ~/dev/org/repo     # Analyze specific repo
+```
+
+This detects:
+- **Project types**: Clarity, TypeScript, Hono, Cloudflare Workers, Python
+- **Recent git activity**: Keywords from last 7 days of commits
+- **Key files**: Clarinet.toml, package.json, wrangler.toml, etc.
+
+Use at session start to orient with relevant knowledge.
+
+### Warm Loading
+
+When you access cold (archived) items through search:
+1. Access is recorded automatically
+2. After 3+ accesses, item becomes a promotion candidate
+3. Run `/capture promote --execute` to move back to warm tier
+
+This enables "warm loading" - cold items that become relevant again naturally promote.
+
+### Search Index
+
+Knowledge search uses an index for fast lookup:
+
+```bash
+# Index location
+~/dev/whoabuddy/claude-knowledge/.search-index.json
+
+# Manual rebuild (auto-rebuilds if older than 1 hour)
+bun ~/.claude/skills/capture/knowledge-search.ts --rebuild-index
+```
+
+Index includes:
+- Path and tier for each knowledge item
+- Extracted keywords (excluding stopwords)
+- First 500 chars for snippet generation
+- Access count and last accessed date
+
+### Session Start Workflow
+
+For new work sessions:
+
+1. Run `/capture suggest` to see relevant knowledge
+2. Review any highly relevant items
+3. Access archived items if needed (tracks for promotion)
+4. Check pending captures with `/capture status`
+
 ## Best Practices
 
 1. **Run at session end** - Context is fresh, patterns are clear
