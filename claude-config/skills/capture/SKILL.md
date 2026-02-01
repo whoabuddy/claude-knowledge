@@ -19,6 +19,12 @@ Reviews work done in the current session and proposes knowledge items for human 
 /capture review --batch  # Quick batch mode: approve high, skip low
 /capture status       # Show pending/approved/rejected counts
 /capture status --week   # Detailed stats for last 7 days
+/capture status --tiers  # Include tier breakdown (warm/cold/icebox)
+/capture archive <file>  # Manually archive knowledge to cold storage
+/capture icebox "idea"   # Park an idea in the icebox
+/capture icebox list     # List parked ideas
+/capture decay           # Check for items ready to decay
+/capture promote         # Check for cold items ready to promote
 ```
 
 ## Subcommands
@@ -84,8 +90,69 @@ Options:
 - `status` - Quick summary counts
 - `status --week` - Detailed stats with category breakdown and weekly trend
 - `status --month` - 30-day detailed view
+- `status --tiers` - Include tier breakdown (warm/cold/icebox)
 
 Uses `capture-stats.ts` helper for statistics.
+
+### /capture archive - Move to Cold Storage
+
+Manually archive knowledge items that are outdated or rarely needed:
+
+```bash
+/capture archive nuggets/old-api.md              # Archive specific file
+/capture archive patterns/deprecated-*.md        # Archive by pattern
+/capture archive nuggets/clarity.md --reason "superseded by new version"
+```
+
+Archived files:
+- Move to `archive/{category}/` preserving structure
+- Add archive metadata (date, reason, original path)
+- Remain searchable but don't pollute active knowledge
+- Can be promoted back if accessed frequently
+
+### /capture icebox - Park Ideas
+
+Park ideas that aren't ready for the knowledge base:
+
+```bash
+/capture icebox "Consider using Deno for scripts"  # Add new idea
+/capture icebox list                               # List all parked ideas
+/capture icebox get 3                              # View specific idea
+/capture icebox delete 3                           # Remove idea
+/capture icebox promote 3                          # Promote to capture
+```
+
+Icebox is for:
+- Unvalidated ideas
+- Future possibilities
+- Low-priority improvements
+- Speculative patterns
+
+Unlike archive (validated knowledge that decayed), icebox holds ideas that never reached warm tier.
+
+### /capture decay - Check Stale Items
+
+Find warm-tier items that haven't been accessed in 90+ days:
+
+```bash
+/capture decay                 # Show decay candidates
+/capture decay --dry-run       # Preview what would move
+/capture decay --execute       # Actually move to archive
+/capture decay --days 60       # Custom threshold
+```
+
+Uses `decay-check.ts` helper. Decay is not automatic - run periodically or with `/capture status`.
+
+### /capture promote - Check Cold Items
+
+Find archived items that should return to warm tier:
+
+```bash
+/capture promote               # Show promotion candidates
+/capture promote --execute     # Actually move back to warm
+```
+
+Items are promoted when accessed 3+ times while in cold storage.
 
 ## What It Does
 
@@ -223,6 +290,22 @@ See `runbook/knowledge-capture.md` in the knowledge base for full workflow docum
 | `~/logs/captures/rejected/` | Rejected with reason |
 | `~/dev/whoabuddy/claude-knowledge/` | Knowledge base destination |
 
+## Knowledge Tiers
+
+| Tier | Description | Location | Loaded |
+|------|-------------|----------|--------|
+| **Hot** | Always loaded | `~/.claude/CLAUDE.md` Quick Facts | Every session |
+| **Warm** | On-demand | `nuggets/`, `patterns/`, `runbook/` | When relevant |
+| **Cold** | Archived | `archive/` | Rarely, manual |
+| **Icebox** | Parked ideas | `icebox/` | Never auto-loaded |
+
+### Tier Transitions
+
+- **Warm -> Cold (Decay)**: Items not accessed in 90 days move to archive
+- **Cold -> Warm (Promotion)**: Items accessed 3+ times while archived return to warm
+- **Warm -> Icebox**: Manual; for ideas not ready for knowledge base
+- **Icebox -> Warm**: Manual promotion when idea is validated
+
 ## Tips
 
 - Run at end of work session when context is fresh
@@ -307,6 +390,7 @@ Compute capture statistics for status reporting:
 bun ~/.claude/skills/capture/capture-stats.ts              # Quick summary
 bun ~/.claude/skills/capture/capture-stats.ts --week       # Last 7 days detailed
 bun ~/.claude/skills/capture/capture-stats.ts --month      # Last 30 days detailed
+bun ~/.claude/skills/capture/capture-stats.ts --tiers      # Include tier stats
 bun ~/.claude/skills/capture/capture-stats.ts --json       # Output as JSON
 ```
 
@@ -317,6 +401,35 @@ Output includes:
 - Weekly trend (last 4 weeks)
 - Recently approved captures
 - Pending items for review
+- Tier counts (with --tiers): warm, cold, icebox
+- Decay/promotion candidates
+
+### access-tracker.ts
+
+Track when knowledge items are accessed:
+
+```bash
+bun ~/.claude/skills/capture/access-tracker.ts record <path>    # Record an access
+bun ~/.claude/skills/capture/access-tracker.ts query <path>     # Get access info
+bun ~/.claude/skills/capture/access-tracker.ts list             # All tracked items
+bun ~/.claude/skills/capture/access-tracker.ts list --stale     # Items ready for decay
+bun ~/.claude/skills/capture/access-tracker.ts list --cold-active  # Cold items to promote
+```
+
+Access log stored at `~/dev/whoabuddy/claude-knowledge/.access-log.json`.
+
+### decay-check.ts
+
+Check for and execute tier transitions:
+
+```bash
+bun ~/.claude/skills/capture/decay-check.ts                # Report decay candidates
+bun ~/.claude/skills/capture/decay-check.ts --dry-run      # Preview changes
+bun ~/.claude/skills/capture/decay-check.ts --execute      # Move files to archive
+bun ~/.claude/skills/capture/decay-check.ts --days 60      # Custom threshold
+bun ~/.claude/skills/capture/decay-check.ts --promote      # Check promotion candidates
+bun ~/.claude/skills/capture/decay-check.ts --promote --execute  # Execute promotions
+```
 
 ### capture-candidates.ts
 
