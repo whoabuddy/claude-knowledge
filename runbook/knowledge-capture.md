@@ -242,22 +242,191 @@ With `/capture review all`:
 After generating daily summary, optionally run capture:
 ```
 /daily && /capture
+/daily --capture    # Integrated capture at end
 ```
 
 ### With /daily-brief Skill
 
-Morning brief surfaces pending capture count:
+Morning brief surfaces pending capture count and recent additions:
 ```
 ## Pending Captures
 
 3 captures awaiting review in ~/logs/captures/pending/
 Run /capture review to process.
+
+## Recently Added Knowledge
+
+- [nugget] Clarity: stacks-block-height deprecation (2026-01-30)
+- [pattern] Hono error middleware pattern (2026-01-29)
 ```
 
 ### With /learn Command
 
 Existing `/learn` for immediate capture continues to work.
 `/capture` is for batch extraction from session work.
+
+## Daily Workflow Integration
+
+The capture system integrates with your daily rhythm for seamless knowledge management.
+
+### Morning Routine (with /daily-brief)
+
+Start each day with orientation:
+
+```bash
+/daily-brief    # Quick summary of pending work
+```
+
+The brief shows:
+- **Pending captures**: Prompts to review if queue is building up
+- **Recently added**: Reinforces the value of capture habit
+- **Open threads**: Context from previous days
+
+If pending > 5, consider running `/capture review --batch` before starting new work.
+
+### Evening Routine (with /daily)
+
+End productive days with capture:
+
+```bash
+/daily --capture    # Summary + knowledge scan
+```
+
+Or chain manually:
+```bash
+/daily && /capture  # Equivalent
+```
+
+When to capture:
+- After debugging sessions (learnings are fresh)
+- After implementing new patterns
+- After solving tricky problems
+- Before starting a new project context
+
+When to skip:
+- Quick administrative tasks
+- Meeting-heavy days
+- Already reviewed recently
+
+### Weekly Review
+
+Check capture health once per week:
+
+```bash
+/capture status --week
+```
+
+Target metrics:
+- **Pending queue < 10**: Don't let items go stale
+- **Approval rate > 70%**: Captures are relevant
+- **Category balance**: Mix of nuggets, patterns, runbooks
+
+If approval rate is low, adjust capture sensitivity:
+- More selective pattern matching
+- Higher confidence threshold
+- Focus on verified fixes over inferred patterns
+
+### Batch Review Mode
+
+For efficient review of accumulated captures:
+
+```bash
+/capture review --batch
+```
+
+Batch mode:
+- Shows all pending captures in sequence
+- Auto-approves high confidence (press Enter)
+- Quick action for medium/low (A/R/S)
+- Summary at end with approve/reject/skip counts
+
+Use batch mode when:
+- Pending queue is large (> 5 items)
+- You have 10-15 minutes for focused review
+- Weekly capture cleanup
+
+### Helper Scripts
+
+The capture skill includes TypeScript helpers:
+
+```bash
+# Statistics
+bun ~/.claude/skills/capture/capture-stats.ts              # Quick summary
+bun ~/.claude/skills/capture/capture-stats.ts --week       # Last 7 days
+bun ~/.claude/skills/capture/capture-stats.ts --json       # Machine-readable
+
+# Generate candidates (what /capture uses internally)
+bun ~/.claude/skills/capture/capture-candidates.ts         # Today
+bun ~/.claude/skills/capture/capture-candidates.ts --week  # Last 7 days
+```
+
+### Example Daily Flow
+
+**Morning:**
+```
+> /daily-brief
+
+## What Got Done
+**2026-01-31** - 8 commits
+- Implemented Clarity contract testing with clarinet SDK
+- Fixed authentication flow in MCP server
+
+## Pending Captures
+2 captures awaiting review
+Run /capture review to process.
+
+## Recently Added Knowledge
+- [nugget] Clarinet SDK simnet reset behavior (2026-01-30)
+
+## Focus Areas
+- Continue MCP server work
+- Review pending captures
+```
+
+**Evening:**
+```
+> /daily --capture
+
+[Daily summary generated...]
+
+## Capture Candidates for 2026-02-01
+
+Found 3 potential captures:
+
+### High Confidence
+- [nugget] Fix authentication header parsing
+  Repos: aibtcdev/aibtc-mcp-server
+
+### Medium Confidence
+- [pattern] Hono middleware error propagation
+  Repos: whoabuddy/moltbook
+
+Captures written to ~/logs/captures/pending/
+Use /capture review to approve/reject.
+```
+
+**Weekly (Friday):**
+```
+> /capture status --week
+
+## Capture Statistics
+
+| Status | Count |
+|--------|------:|
+| Pending | 4 |
+| Approved | 7 |
+| Rejected | 2 |
+
+**Approval Rate:** 78%
+
+### By Category
+| Category | Pending | Approved | Rejected |
+|----------|:-------:|:--------:|:--------:|
+| nugget | 3 | 5 | 1 |
+| pattern | 1 | 2 | 1 |
+
+Looking good! Queue is manageable and approval rate is healthy.
+```
 
 ## Knowledge Base Persistence
 
