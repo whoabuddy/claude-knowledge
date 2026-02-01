@@ -25,6 +25,9 @@ Reviews work done in the current session and proposes knowledge items for human 
 /capture icebox list     # List parked ideas
 /capture decay           # Check for items ready to decay
 /capture promote         # Check for cold items ready to promote
+/capture search <query>  # Search knowledge across all tiers
+/capture search "stx" --tier warm  # Filter by tier
+/capture suggest         # Context-aware suggestions for current repo
 ```
 
 ## Subcommands
@@ -153,6 +156,52 @@ Find archived items that should return to warm tier:
 ```
 
 Items are promoted when accessed 3+ times while in cold storage.
+
+### /capture search - Search Knowledge
+
+Search across all knowledge tiers with tier-aware ranking:
+
+```bash
+/capture search "clarity errors"           # Search all tiers
+/capture search "stx" --tier warm          # Filter by tier (warm/cold/icebox)
+/capture search "api" --category patterns  # Filter by category
+/capture search "token" --limit 5          # Limit results
+```
+
+Search features:
+- **Tier-aware ranking**: Warm items ranked higher than cold/icebox
+- **Recency boost**: Recently accessed items rank higher
+- **Frequency boost**: Frequently accessed items rank higher
+- **Fuzzy matching**: Partial keyword matches included
+
+Results show:
+- Title and path
+- Tier indicator ([archived] for cold, [icebox] for parked)
+- Match score and matched keywords
+- Content snippet
+
+Uses `knowledge-search.ts` helper. Automatically records access for cold items (for promotion tracking).
+
+### /capture suggest - Context-Aware Suggestions
+
+Analyze current working directory and surface relevant knowledge:
+
+```bash
+/capture suggest                    # Analyze current directory
+/capture suggest ~/dev/org/repo     # Analyze specific repo
+```
+
+Detects:
+- **Project types**: Clarity, TypeScript, Hono, Cloudflare Workers, Python
+- **Recent git activity**: Keywords from last 7 days of commits
+- **Key files**: Clarinet.toml, package.json, wrangler.toml, etc.
+
+Outputs:
+- Highly relevant items (strong type/keyword match)
+- May be useful items (partial matches)
+- Archived items that might need warm loading
+
+Uses `context-suggest.ts` helper. Run at session start to orient with relevant knowledge.
 
 ## What It Does
 
@@ -448,6 +497,33 @@ Pattern matching:
 - Clarity contract changes -> domain-specific nuggets
 - Config file changes -> runbook candidates
 - New utils/patterns files -> pattern candidates
+
+### knowledge-search.ts
+
+Full-text search across all knowledge tiers:
+
+```bash
+bun ~/.claude/skills/capture/knowledge-search.ts "clarity"           # Search all tiers
+bun ~/.claude/skills/capture/knowledge-search.ts "stx" --tier warm   # Filter by tier
+bun ~/.claude/skills/capture/knowledge-search.ts "api" --category patterns  # Filter by category
+bun ~/.claude/skills/capture/knowledge-search.ts --rebuild-index     # Rebuild search index
+bun ~/.claude/skills/capture/knowledge-search.ts --json              # Output as JSON
+```
+
+Search index stored at `~/dev/whoabuddy/claude-knowledge/.search-index.json`.
+Index auto-rebuilds if older than 1 hour.
+
+### context-suggest.ts
+
+Context-aware knowledge suggestions based on working directory:
+
+```bash
+bun ~/.claude/skills/capture/context-suggest.ts                    # Current directory
+bun ~/.claude/skills/capture/context-suggest.ts ~/dev/org/repo     # Specific repo
+bun ~/.claude/skills/capture/context-suggest.ts --json             # Output as JSON
+```
+
+Detects project types and surfaces relevant knowledge from all tiers.
 
 ## Daily Workflow Integration
 
