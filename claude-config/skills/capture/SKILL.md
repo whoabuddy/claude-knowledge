@@ -16,7 +16,9 @@ Reviews work done in the current session and proposes knowledge items for human 
 /capture 2026-01-15   # Review a specific date
 /capture review       # Process pending captures (approve/reject/edit)
 /capture review all   # Process all pending captures in batch
+/capture review --batch  # Quick batch mode: approve high, skip low
 /capture status       # Show pending/approved/rejected counts
+/capture status --week   # Detailed stats for last 7 days
 ```
 
 ## Subcommands
@@ -37,6 +39,37 @@ Interactive workflow to review pending captures:
 Options:
 - `review` - Process one capture at a time
 - `review all` - Batch process all pending captures
+- `review --batch` - Quick batch mode for efficient processing
+
+### Batch Review Mode
+
+Use `review --batch` for quick bulk processing:
+
+```
+> /capture review --batch
+
+Processing 5 pending captures in batch mode...
+
+1. [nugget] Clarity: stacks-block-height deprecation
+   Confidence: high | Repos: aibtcdev/agent-contracts
+   Quick action? [A]pprove / [R]eject / [S]kip (default: approve high)
+
+2. [pattern] Error handling middleware
+   Confidence: medium | Repos: whoabuddy/moltbook
+   Quick action? [A]pprove / [R]eject / [S]kip
+
+...
+
+Batch complete!
+- Approved: 3
+- Rejected: 1
+- Skipped: 1
+```
+
+Batch mode defaults:
+- Auto-approve high confidence captures (press Enter)
+- Ask for medium/low confidence
+- Skip items you're unsure about for later review
 
 ### /capture status - Show Counts
 
@@ -46,6 +79,13 @@ Pending:  3 captures awaiting review
 Approved: 12 captures persisted this month
 Rejected: 2 captures archived
 ```
+
+Options:
+- `status` - Quick summary counts
+- `status --week` - Detailed stats with category breakdown and weekly trend
+- `status --month` - 30-day detailed view
+
+Uses `capture-stats.ts` helper for statistics.
 
 ## What It Does
 
@@ -254,3 +294,75 @@ Approved! Persisted to nuggets/clarity.md
 ## Capture 2/3: Hono middleware error handling
 ...
 ```
+
+## Helper Scripts
+
+The skill uses TypeScript helpers for stats and candidate generation:
+
+### capture-stats.ts
+
+Compute capture statistics for status reporting:
+
+```bash
+bun ~/.claude/skills/capture/capture-stats.ts              # Quick summary
+bun ~/.claude/skills/capture/capture-stats.ts --week       # Last 7 days detailed
+bun ~/.claude/skills/capture/capture-stats.ts --month      # Last 30 days detailed
+bun ~/.claude/skills/capture/capture-stats.ts --json       # Output as JSON
+```
+
+Output includes:
+- Pending/approved/rejected counts
+- Approval rate percentage
+- Category breakdown (nugget, pattern, runbook, decision)
+- Weekly trend (last 4 weeks)
+- Recently approved captures
+- Pending items for review
+
+### capture-candidates.ts
+
+Auto-generate capture candidates from git activity:
+
+```bash
+bun ~/.claude/skills/capture/capture-candidates.ts              # Today's activity
+bun ~/.claude/skills/capture/capture-candidates.ts 2026-02-01   # Specific date
+bun ~/.claude/skills/capture/capture-candidates.ts --week       # Last 7 days
+bun ~/.claude/skills/capture/capture-candidates.ts --json       # Output as JSON
+```
+
+Pattern matching:
+- Fix commits -> high confidence nuggets
+- Same file edited 3+ times -> debugging session nuggets
+- Clarity contract changes -> domain-specific nuggets
+- Config file changes -> runbook candidates
+- New utils/patterns files -> pattern candidates
+
+## Daily Workflow Integration
+
+### Morning (with /daily-brief)
+
+The daily-brief skill surfaces:
+- Pending capture count
+- Recently approved captures (last 7 days)
+- Prompt to run `/capture review` if pending > 0
+
+### Evening (with /daily)
+
+After generating daily summary, optionally run capture:
+
+```bash
+/daily && /capture        # Generate summary, then scan for captures
+/daily --capture          # Integrated capture at end (optional)
+```
+
+### Weekly Review
+
+Use stats to track capture health:
+
+```bash
+/capture status --week    # See approval rate, trends, categories
+```
+
+Target metrics:
+- Keep pending queue < 10
+- Approval rate > 70% (captures are relevant)
+- Review daily to prevent staleness
