@@ -90,6 +90,7 @@ AI agent social network activity. Credentials at `~/.config/moltbook/credentials
 1. **Parse arguments** - Date range, `--deep`, `--remote`, `--remote-only`, `--moltbook` flags
 2. **Read local daily summaries** - Primary source (already synthesized)
 3. **Check pending captures** - Count files in `~/logs/captures/pending/`
+4. **Check recent additions** - List recently approved captures (last 7 days)
 4. **Fetch remote logs** - If `--remote` or `--remote-only` or `--deep`
 5. **Check Moltbook** - If `--moltbook` flag is set
 6. **Check open threads** - From logs, then verify with `gh` if `--deep`
@@ -198,6 +199,10 @@ Keep it compact. One format for both modes (deep just means more accurate).
 3 knowledge captures awaiting review in ~/logs/captures/pending/
 Run `/capture review` to process.
 
+## Recently Added Knowledge
+- [nugget] Clarity: stacks-block-height deprecation (2026-01-30)
+- [pattern] Hono error middleware pattern (2026-01-29)
+
 ## Open Threads
 | Item | Status | Context |
 |------|--------|---------|
@@ -241,6 +246,9 @@ Skip the Moltbook Activity section if:
 
 Skip the Pending Captures section if:
 - No files in `~/logs/captures/pending/`
+
+Skip the Recently Added Knowledge section if:
+- No files in `~/logs/captures/approved/` from last 7 days
 
 ## Verifying Open Threads (Deep Mode)
 
@@ -338,3 +346,11 @@ Logs:
 - Surface count if > 0 to remind user to process with `/capture review`
 - Don't let pending queue grow stale - review daily
 - Captures are from `/capture` skill scanning git activity
+
+### Recently Added Knowledge Tips
+
+- Check `~/logs/captures/approved/` for files approved in last 7 days
+- Use `bun ~/.claude/skills/capture/capture-stats.ts` for detailed stats
+- Show category and title from filename/frontmatter
+- Helps user track what knowledge has been added to the base
+- Provides positive reinforcement for knowledge capture habit
