@@ -103,10 +103,137 @@ For each identified learning:
 
 ### 5. Human Review
 
-Captures stay in `pending/` until reviewed:
-- **Approve**: Move to `approved/`, persist to knowledge base
-- **Reject**: Move to `rejected/` with reason in file
-- **Edit**: Modify content, then approve
+Captures stay in `pending/` until reviewed. Use `/capture review` to process.
+
+## Review Workflow
+
+### Starting a Review
+
+```bash
+/capture review       # Process one at a time
+/capture review all   # Process all pending
+/capture status       # Check pending count first
+```
+
+### Review Actions
+
+For each pending capture, choose one of:
+
+#### Approve
+
+Approving a capture:
+1. Moves file from `pending/` to `approved/`
+2. Adds `approved_date` to frontmatter
+3. Persists content to the knowledge base
+
+Persistence by category:
+
+| Category | Destination | How |
+|----------|-------------|-----|
+| `nugget` | `nuggets/{topic}.md` | Append to existing file, or create if topic is new |
+| `pattern` | `patterns/{name}.md` | Create new file (kebab-case name from title) |
+| `runbook` | `runbook/{task}.md` | Create new file (kebab-case name from title) |
+| `decision` | `decisions/{nnnn}-{name}.md` | Create with next sequential ADR number |
+
+Example approval flow:
+```
+Category: nugget
+Topic derived from title: "clarity"
+
+Appending to: ~/dev/whoabuddy/claude-knowledge/nuggets/clarity.md
+
+---
+### stacks-block-height vs block-height
+
+Use `stacks-block-height` for current block height.
+`block-height` is legacy and deprecated.
+
+*Source: aibtcdev/aibtc-contracts, 2026-02-01*
+---
+
+Done! Capture approved and persisted.
+```
+
+#### Reject
+
+Rejecting a capture:
+1. Moves file from `pending/` to `rejected/`
+2. Adds rejection metadata to frontmatter
+
+Rejection frontmatter:
+```yaml
+---
+rejected: true
+rejected_date: 2026-02-01
+rejected_reason: "Duplicate of existing nugget in clarity.md"
+# ... original frontmatter preserved ...
+---
+```
+
+Common rejection reasons:
+- **Duplicate**: Already exists in knowledge base
+- **Too specific**: Not reusable, one-off solution
+- **Needs validation**: Not confident enough yet
+- **Not accurate**: Contains errors or misconceptions
+- **Sensitive**: Contains credentials or internal info
+
+Example rejection flow:
+```
+Why reject this capture?
+1. Duplicate of existing knowledge
+2. Too specific (not reusable)
+3. Needs more validation
+4. Not accurate
+5. Contains sensitive info
+6. Other (provide reason)
+
+> 1
+
+Moving to rejected/ with reason: "Duplicate of existing knowledge"
+```
+
+#### Edit
+
+Editing allows refinement before approve/reject:
+
+1. **Edit content**: Rewrite or clarify the knowledge
+2. **Change category**: Move from nugget to pattern, etc.
+3. **Adjust confidence**: High/medium/low
+4. **Update metadata**: Repos, source, etc.
+
+Example edit flow:
+```
+What to edit?
+1. Content (title and body)
+2. Category (currently: nugget)
+3. Confidence (currently: medium)
+4. Skip (return to approve/reject)
+
+> 1
+
+Current content:
+---
+# Clarity: Use try! for Error Propagation
+...
+---
+
+Enter new content (or 'cancel'):
+> [User provides refined content]
+
+Updated! Now: [a]pprove / [r]eject / [e]dit again?
+```
+
+#### Skip
+
+Skip leaves the capture in `pending/` for later review.
+
+### Batch Review
+
+With `/capture review all`:
+- Process each capture in sequence
+- Can still skip individual items
+- Shows progress: "Capture 3/7"
+- Summary at end: "Approved: 4, Rejected: 2, Skipped: 1"
 
 ## Integration Points
 
@@ -119,9 +246,12 @@ After generating daily summary, optionally run capture:
 
 ### With /daily-brief Skill
 
-Morning brief can surface pending capture count:
+Morning brief surfaces pending capture count:
 ```
-Pending captures: 3 items in ~/logs/captures/pending/
+## Pending Captures
+
+3 captures awaiting review in ~/logs/captures/pending/
+Run /capture review to process.
 ```
 
 ### With /learn Command
@@ -133,18 +263,57 @@ Existing `/learn` for immediate capture continues to work.
 
 On approval, captures persist to `~/dev/whoabuddy/claude-knowledge/`:
 
+### Nuggets
+
+Append to topic file (create if doesn't exist):
+
 ```bash
-# Nugget - append to topic file
-cat capture.md >> nuggets/clarity.md
+# If nuggets/clarity.md exists, append
+# Otherwise, create with header
 
-# Pattern - create new file
-cp capture.md patterns/error-handling.md
+# Example append format:
+### [Title from capture]
 
-# Runbook - create new file
-cp capture.md runbook/testnet-deploy.md
+[Content from capture]
 
-# Decision - create with next number
-cp capture.md decisions/0004-error-strategy.md
+*Source: [repos], [date]*
+```
+
+### Patterns
+
+Create new pattern file:
+
+```bash
+# patterns/error-handling-middleware.md
+# Use kebab-case from title
+
+# Include full content from capture
+# Add any examples and context
+```
+
+### Runbook
+
+Create new runbook file:
+
+```bash
+# runbook/testnet-deploy.md
+# Use kebab-case from title
+
+# Preserve step-by-step structure
+# Add prerequisites and verification steps
+```
+
+### Decisions (ADR)
+
+Create with next sequential number:
+
+```bash
+# Find next ADR number
+ls decisions/*.md | sort | tail -1
+# If last is 0003-*, next is 0004
+
+# decisions/0004-error-strategy.md
+# Follow ADR format: status, context, decision, consequences
 ```
 
 ## Memory Tiers
@@ -167,6 +336,36 @@ New captures default to Warm tier. Frequently referenced items may be promoted t
 3. **Be specific** - Include examples, not just descriptions
 4. **Include context** - Which commits/files triggered this
 5. **Don't capture secrets** - No credentials, internal URLs
+6. **Review daily** - Don't let pending queue grow stale
+7. **Batch when possible** - `/capture review all` is efficient
+
+## Troubleshooting
+
+### Capture generated but not useful
+
+Reject with "too specific" or "needs validation". These go to `rejected/` for reference but don't pollute the knowledge base.
+
+### Duplicate capture
+
+Check if knowledge already exists before approving:
+```bash
+grep -r "stacks-block-height" ~/dev/whoabuddy/claude-knowledge/
+```
+
+If duplicate, reject with reason.
+
+### Wrong category
+
+Use edit to change category before approving. A nugget might actually be a pattern if it has enough structure.
+
+### Low confidence captures
+
+Review more carefully. Ask:
+- Is this a one-off or will it recur?
+- Is this verified or just a hypothesis?
+- Does this add value to the knowledge base?
+
+When in doubt, reject with "needs validation" and revisit if the pattern recurs.
 
 ## Related
 
