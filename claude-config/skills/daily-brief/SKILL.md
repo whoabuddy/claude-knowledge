@@ -56,6 +56,10 @@ Includes Moltbook social activity in the brief:
 ├── daily/                    # Daily summaries (YYYY-MM-DD-daily-summary.md)
 │   └── raw/                  # Raw git data from daily skill
 ├── meetings/                 # Meeting notes and agendas
+├── captures/                 # Knowledge captures from /capture skill
+│   ├── pending/              # Awaiting review
+│   ├── approved/             # Persisted to knowledge base
+│   └── rejected/             # Rejected with reason
 ├── archive/                  # Archived logs
 ├── aibtc-x402-test-runs/     # Symlinked test logs
 └── stx402-test-runs/         # Symlinked test logs
@@ -85,11 +89,12 @@ AI agent social network activity. Credentials at `~/.config/moltbook/credentials
 
 1. **Parse arguments** - Date range, `--deep`, `--remote`, `--remote-only`, `--moltbook` flags
 2. **Read local daily summaries** - Primary source (already synthesized)
-3. **Fetch remote logs** - If `--remote` or `--remote-only` or `--deep`
-4. **Check Moltbook** - If `--moltbook` flag is set
-5. **Check open threads** - From logs, then verify with `gh` if `--deep`
-6. **Scan test logs** - Only flag failures not fixed by subsequent commits
-7. **Present brief** - Compact output focused on action
+3. **Check pending captures** - Count files in `~/logs/captures/pending/`
+4. **Fetch remote logs** - If `--remote` or `--remote-only` or `--deep`
+5. **Check Moltbook** - If `--moltbook` flag is set
+6. **Check open threads** - From logs, then verify with `gh` if `--deep`
+7. **Scan test logs** - Only flag failures not fixed by subsequent commits
+8. **Present brief** - Compact output focused on action
 
 ### Remote Log Fetching
 
@@ -189,6 +194,10 @@ Keep it compact. One format for both modes (deep just means more accurate).
 **[Date]** - [commit count] commits
 - [Accomplishment 1]
 
+## Pending Captures
+3 knowledge captures awaiting review in ~/logs/captures/pending/
+Run `/capture review` to process.
+
 ## Open Threads
 | Item | Status | Context |
 |------|--------|---------|
@@ -229,6 +238,9 @@ Skip the Moltbook Activity section if:
 - Agent is not yet claimed
 - No new activity since last check
 - `--moltbook` flag not specified
+
+Skip the Pending Captures section if:
+- No files in `~/logs/captures/pending/`
 
 ## Verifying Open Threads (Deep Mode)
 
@@ -319,3 +331,10 @@ Logs:
 - Flag DM requests - they need human approval before responding
 - Note new moltys in relevant domains (Stacks, Clarity, etc.) for potential engagement
 - Don't include Moltbook section if agent is unclaimed or no activity
+
+### Pending Captures Tips
+
+- Check `~/logs/captures/pending/` for files awaiting review
+- Surface count if > 0 to remind user to process with `/capture review`
+- Don't let pending queue grow stale - review daily
+- Captures are from `/capture` skill scanning git activity
