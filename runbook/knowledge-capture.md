@@ -489,14 +489,108 @@ ls decisions/*.md | sort | tail -1
 
 Captures feed into the four-tier memory system:
 
-| Tier | Description | Location |
-|------|-------------|----------|
-| Hot | Always loaded | `~/.claude/CLAUDE.md` Quick Facts |
-| Warm | On-demand | `nuggets/`, `patterns/`, `runbook/` |
-| Cold | Archived | `archive/` |
-| Icebox | Parked ideas | `icebox/` |
+| Tier | Description | Location | Loaded |
+|------|-------------|----------|--------|
+| **Hot** | Always loaded | `~/.claude/CLAUDE.md` Quick Facts | Every session |
+| **Warm** | On-demand | `nuggets/`, `patterns/`, `runbook/` | When relevant |
+| **Cold** | Archived | `archive/` | Rarely, manual |
+| **Icebox** | Parked ideas | `icebox/` | Never auto-loaded |
 
 New captures default to Warm tier. Frequently referenced items may be promoted to Hot (Quick Facts in CLAUDE.md).
+
+### Tier Transitions
+
+#### Decay (Warm -> Cold)
+
+Items not accessed for 90+ days automatically decay to cold storage:
+
+```bash
+# Check what would be archived
+/capture decay --dry-run
+
+# Execute decay (move to archive/)
+/capture decay --execute
+
+# Custom threshold
+/capture decay --days 60 --execute
+```
+
+Decayed files:
+- Move to `archive/{category}/` preserving structure
+- Add decay metadata (date, reason, original path, access count)
+- Remain searchable but don't pollute active knowledge
+
+#### Promotion (Cold -> Warm)
+
+Items accessed 3+ times while in cold storage promote back to warm:
+
+```bash
+# Check cold items ready for promotion
+/capture promote
+
+# Execute promotion
+/capture promote --execute
+```
+
+#### Manual Archive
+
+Archive knowledge that's outdated but might be useful later:
+
+```bash
+# Archive specific file
+/capture archive nuggets/old-api.md --reason "API deprecated in v2.0"
+
+# Archive by pattern
+/capture archive patterns/legacy-*.md
+```
+
+#### Icebox
+
+Park ideas that aren't ready for the knowledge base:
+
+```bash
+# Add new idea
+/capture icebox "Consider using property-based testing for contracts"
+
+# List parked ideas
+/capture icebox list
+
+# View specific idea
+/capture icebox get 3
+
+# Promote validated idea to capture
+/capture icebox promote 3
+```
+
+Icebox is for unvalidated ideas, unlike archive which holds validated knowledge that decayed.
+
+### Access Tracking
+
+The system tracks when knowledge is accessed to support decay/promotion:
+
+```bash
+# Record an access (done automatically during retrieval)
+bun ~/.claude/skills/capture/access-tracker.ts record nuggets/clarity.md
+
+# Query access info
+bun ~/.claude/skills/capture/access-tracker.ts query nuggets/clarity.md
+
+# List stale items (90+ days)
+bun ~/.claude/skills/capture/access-tracker.ts list --stale
+
+# List cold items ready for promotion
+bun ~/.claude/skills/capture/access-tracker.ts list --cold-active
+```
+
+Access log stored at `~/dev/whoabuddy/claude-knowledge/.access-log.json`.
+
+### Tier Management Best Practices
+
+1. **Run decay check monthly** - Keep warm tier focused on active knowledge
+2. **Review promotion candidates** - Frequently accessed archived items should return
+3. **Use icebox liberally** - Better to park than pollute the knowledge base
+4. **Archive vs delete** - Prefer archive over delete; knowledge might be useful later
+5. **Track tier stats** - Use `/capture status --tiers` to monitor balance
 
 ## Best Practices
 
