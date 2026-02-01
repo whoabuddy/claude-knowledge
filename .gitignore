@@ -17,3 +17,6 @@ bun.lock
 # Keep the HTML viewer and curated logs
 !logs/index.html
 !logs/*.summary.md
+
+# Generated search index (rebuild with knowledge-search.ts --rebuild-index)
+.search-index.json
