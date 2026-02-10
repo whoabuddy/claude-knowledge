@@ -29,7 +29,25 @@ Mark the current quest as complete and emit completion event.
    ```bash
    ~/.claude/scripts/quest/emit-event.sh quest_completed '"questId":"<id>","name":"<name>","phasesCompleted":<n>,"totalRetries":<n>'
    ```
-5. Display completion summary with XP earned
+5. Archive the quest:
+   - Create `.planning/archive/` if it doesn't exist
+   - Move `.planning/` contents to `.planning/archive/<quest-name>/`
+   - Keep `.planning/archive/` for future quests
+6. Display completion summary
+
+## Archiving
+
+Completed quests are stored in `.planning/archive/<quest-name>/`:
+
+```
+.planning/
+└── archive/
+    ├── arc-productive-loop/
+    ├── arc-self-audit/
+    └── user-authentication/
+```
+
+This keeps the root directory clean while preserving quest history for reference.
 
 ## Completion Summary
 

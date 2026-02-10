@@ -30,7 +30,7 @@ Automates the plan-exec-verify loop for quest phases. Each phase runs in a **fre
 
    b. **Spawn fresh subagent** via Task tool:
       ```
-      Task tool with subagent_type: general-purpose
+      Task tool with subagent_type: phase-executor
       Prompt: "Execute phase N of quest. Run plan-exec-verify cycle.
                Read .planning/ for context. Write results back.
                Return: {status, commits, retries, summary}"
@@ -80,6 +80,7 @@ Run the full plan-exec-verify cycle for this phase:
 - On verification failure: re-exec with diagnosis, up to maxRetries
 - On 3rd failure: return status=checkpoint with full diagnosis
 - Update PHASES.md and STATE.md after each step
+- **Before implementing crypto, signing, or wallet operations**: Check available MCP tools (mcp__aibtc__*) first. Use existing tools rather than reimplementing.
 
 ## Return Format
 Return a JSON summary:

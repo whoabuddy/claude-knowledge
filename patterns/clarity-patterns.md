@@ -228,6 +228,17 @@ Use `as-contract` for contract-controlled funds:
 
 Warning: `as-contract` changes both `tx-sender` and `contract-caller` to the contract principal.
 
+**tx-sender vs contract-caller decision framework:**
+- `tx-sender`: Use for auth checks, identity attribution, self-action guards. Preserves human identity through normal proxies (user -> proxy -> target). Preferred for composability.
+- `contract-caller`: Use when you need the IMMEDIATE caller identity specifically.
+- Security note: Using `contract-caller` for self-action guards (e.g., "owner can't give themselves feedback") is bypassable -- owner routes through any proxy and `contract-caller` shows the proxy, not the owner. `tx-sender` catches this because it preserves the human origin.
+
+| Call Path | contract-caller | tx-sender |
+|-----------|-----------------|-----------|
+| user -> target | user | user |
+| user -> proxy -> target | proxy | user |
+| user -> proxy (as-contract) -> target | proxy | proxy |
+
 Examples: [ccd002-treasury-v3](https://github.com/citycoins/protocol/blob/main/contracts/extensions/ccd002-treasury-v3.clar), [aibtc-agent-account](https://github.com/aibtcdev/aibtcdev-daos/blob/main/contracts/agent/aibtc-agent-account.clar)
 
 ## Clarity 4: Asset Restrictions

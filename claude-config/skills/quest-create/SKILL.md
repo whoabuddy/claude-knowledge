@@ -77,8 +77,10 @@ Retry Count: 0
 
 ## Prerequisites
 
-- No active quest (`.planning/` directory should not exist)
+- No active quest files (`.planning/QUEST.md` should not exist)
 - Goal description provided
+
+Note: `.planning/archive/` may exist from previous quests and should be preserved.
 
 ## Next Steps
 
