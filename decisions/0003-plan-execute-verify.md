@@ -83,5 +83,8 @@ Quest state lives in `.planning/` at the project root, added to `.gitignore`. Th
 
 ## References
 - Quest workflow: `runbook/quest-workflow.md`
-- Agent definitions: `claude-config/agents/quest-planner.md`, `phase-executor.md`, `phase-verifier.md`
-- Skills: `claude-config/skills/quest/`, `plan-phase/`, `execute-phase/`, `verify-phase/`
+- Agent definitions: `claude-config/agents/quest-planner.md`, `phase-executor.md`
+- Skills: `quest-create`, `quest-run`, `quest-complete`, `quest-status`
+
+## Updates
+- 2026-02-16: Consolidated from 9 skills to 4, 3 agents to 2. Phase-executor now handles full plan+exec+verify lifecycle. Phase-verifier merged into phase-executor. RPG event emission removed.

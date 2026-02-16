@@ -6,49 +6,71 @@ allowed-tools: Bash, Read, Write, Edit, Glob, Grep, Task
 
 # Quest Create Skill
 
-Create a new quest — a high-level goal broken into ordered phases with plan-execute-verify lifecycle.
+Create a new quest — a high-level goal broken into ordered phases for automated execution.
 
 ## Usage
 
 ```
-/quest-create "Goal description"
+/quest-create <goal description or context>
 ```
+
+The user provides a goal/prompt. The quest-planner agent derives a quest name and phase breakdown.
 
 ## Behavior
 
-1. Read the goal from the user's input
-2. Spawn `quest-planner` agent to break the goal into phases:
+1. **Check for active quests:**
+   - Look for `.planning/*/QUEST.md` files with `Status: active`
+   - If one exists: warn the user (don't block — multiple quests can coexist, only one runs at a time)
+   - `.planning/archive/` is always preserved
+
+2. **Spawn `quest-planner` agent** to analyze the goal:
    ```
    Task tool with subagent_type: quest-planner
    ```
-3. Create `.planning/` directory in the project root with:
-   - `QUEST.md` — Goal, linked repos, status, created date
-   - `PHASES.md` — Ordered phase list with status and goals
-   - `STATE.md` — Current position (phase 1, pending), decisions log
-   - `config.json` — Default settings: `{"maxRetries": 3, "autoRetry": true, "commitFormat": "conventional", "rpgNotify": true}`
+   The planner returns:
+   - Quest name (short slug, e.g., "cost-tracking")
+   - QUEST.md content (goal, repos, context)
+   - PHASES.md content (ordered phases with goals)
+
+3. **Create quest directory:** `.planning/YYYY-MM-DD-<quest-name>/`
+   - Date prefix uses today's date for chronological sorting
+   - Quest name slug from planner output (lowercase, hyphenated)
+
+4. **Write quest files:**
+   - `QUEST.md` — Goal, linked repos, status (`active`), created date
+   - `PHASES.md` — Ordered phases, all status `pending`
+   - `STATE.md` — Current phase, activity log
+   - `config.json` — `{"maxRetries": 3, "commitFormat": "conventional"}`
    - `phases/` — Empty directory for phase plans
-4. Add `.planning/` to `.gitignore` if not already present
-5. Emit `quest_created` event:
-   ```bash
-   ~/.claude/scripts/quest/emit-event.sh quest_created '"questId":"<id>","name":"<name>","description":"<desc>","phases":[{"id":"<id>","name":"<name>","order":1}],"repos":["<repo>"]'
-   ```
-6. Display quest summary and next steps
+
+5. **Add `.planning/` to `.gitignore`** if not already present
+
+6. **Display** quest summary and next steps
 
 ## Output Files
 
 ### QUEST.md
 ```markdown
-# Quest Name
+# Quest: Quest Name
 
-Goal description here.
+**Goal:** Goal description here.
 
-Status: active
-Created: YYYY-MM-DD
-Repos: repo-name
+**Status:** active
 
-## Goal
+**Repos:**
+- /path/to/repo (primary)
 
-Detailed goal description from planner analysis.
+**Created:** YYYY-MM-DD
+
+---
+
+## Context
+
+Detailed context from planner analysis.
+
+## Key Dependencies
+
+Phase dependency notes if any.
 ```
 
 ### PHASES.md
@@ -64,26 +86,49 @@ Goal: What this phase achieves
 Status: `pending`
 ```
 
+Phase states: `pending` → `completed` (or `checkpoint` if stuck after maxRetries).
+
 ### STATE.md
 ```markdown
 # Quest State
 
 Current Phase: 1
-Phase Status: pending
-Retry Count: 0
+Quest Status: active
 
-## Decisions Log
+## Activity Log
+
+- YYYY-MM-DD: Quest created with N phases
+```
+
+### config.json
+```json
+{
+  "maxRetries": 3,
+  "commitFormat": "conventional"
+}
+```
+
+## Directory Structure
+
+```
+.planning/
+├── 2026-02-16-cost-tracking/
+│   ├── QUEST.md
+│   ├── PHASES.md
+│   ├── STATE.md
+│   ├── config.json
+│   └── phases/
+└── archive/
+    ├── 2026-02-14-auth-system/
+    └── 2026-02-10-loop-hardening/
 ```
 
 ## Prerequisites
 
-- No active quest files (`.planning/QUEST.md` should not exist)
-- Goal description provided
-
-Note: `.planning/archive/` may exist from previous quests and should be preserved.
+- Goal description provided by user
 
 ## Next Steps
 
 After creating a quest, use:
-- `/quest-plan` to plan the first phase
-- `/quest-run` to run the full plan-exec-verify loop
+- `/quest-run` to run the automated phase loop
+- `/quest-status` to check progress

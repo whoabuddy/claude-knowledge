@@ -1,12 +1,12 @@
 ---
 name: quest-run
-description: Run quest phases with automated plan-exec-verify loop
-allowed-tools: Bash, Read, Task
+description: Run quest phases with automated execution loop
+allowed-tools: Bash, Read, Write, Edit, Task
 ---
 
 # Quest Run Skill
 
-Automates the plan-exec-verify loop for quest phases. Each phase runs in a **fresh subagent context** to prevent token accumulation across phases.
+Automates quest phase execution. Each phase runs in a **fresh subagent context** to prevent token accumulation. The orchestrator stays lean — reads state files, reviews JSON returns, delegates everything.
 
 ## Usage
 
@@ -18,156 +18,155 @@ Automates the plan-exec-verify loop for quest phases. Each phase runs in a **fre
 
 ## Behavior
 
-1. **Validate** active quest exists (exit if not — use `/quest-create` first)
-2. **Read** quest state from `.planning/STATE.md` and `.planning/PHASES.md`
-3. **Determine** phase range:
-   - No argument: current phase from STATE.md to last phase
+1. **Find active quest:**
+   - Look for `.planning/*/QUEST.md` files with `Status: active`
+   - If none found: exit — use `/quest-create` first
+   - If multiple: ask user which to run
+
+2. **Read quest state** from the active quest directory:
+   - `PHASES.md` — Phase list and statuses
+   - `STATE.md` — Current position
+   - `config.json` — Settings (maxRetries)
+
+3. **Determine phase range:**
+   - No argument: first `pending` phase to last phase
    - Single number: start from that phase
    - Range (N-M): run only phases N through M
+
 4. **For each phase** in range:
 
-   a. Read phase status from PHASES.md — skip if `completed`
+   a. Read phase status from PHASES.md — **skip** if `completed`
 
    b. **Spawn fresh subagent** via Task tool:
       ```
       Task tool with subagent_type: phase-executor
-      Prompt: "Execute phase N of quest. Run plan-exec-verify cycle.
-               Read .planning/ for context. Write results back.
-               Return: {status, commits, retries, summary}"
       ```
+      Include in the prompt:
+      - Quest context (from QUEST.md)
+      - Phase goal (from PHASES.md)
+      - Previous phase summaries (brief)
+      - If retrying: contents of `phases/NN-name/DIAGNOSIS.md`
+      - Reminder to check MCP tools for crypto/wallet/signing operations
 
-   c. **On subagent return**:
-      - If status=`completed`: continue to next phase
-      - If status=`checkpoint`: stop loop, display diagnosis to user
-      - If status=`error`: stop loop, report error
+   c. **On subagent return**, parse the JSON summary:
 
-5. **When all phases complete**: display summary and suggest `/quest-complete`
+      - **status=completed:**
+        - Update PHASES.md: mark phase as `completed`
+        - Log to STATE.md: phase completed, commits, timestamp
+        - Display: "Phase N: completed (X commits)"
+        - Continue to next phase
 
-## Context Isolation
+      - **status=needs_retry:**
+        - Write diagnosis to `phases/NN-name/DIAGNOSIS.md`
+        - Check retry count vs maxRetries from config.json
+        - If retries < maxRetries:
+          - Increment retry count in STATE.md
+          - Spawn **new** subagent with diagnosis context
+          - Display: "Phase N: retrying (attempt X/maxRetries)"
+        - If retries >= maxRetries:
+          - Mark phase as `checkpoint` in PHASES.md
+          - **STOP** loop
+          - Display diagnosis and options to user
 
-**Why subagents per phase?** Each phase can consume significant context during planning (codebase exploration), execution (file edits, test runs), and verification (artifact checking). Running all phases in one context leads to token exhaustion.
+      - **status=error:**
+        - **STOP** loop
+        - Display error details
 
-**How it works:**
-- The orchestrator (this skill) stays lean — only reads STATE.md/PHASES.md
-- Each phase runs in a fresh 200k context subagent
-- Subagent reads quest state from files, does all work, writes results back
-- Only a summary returns to the orchestrator
-- Files in `.planning/` serve as memory between phases
+5. **When all phases complete:**
+   - Display summary (phases, commits, retries)
+   - Suggest `/quest-complete`
 
 ## Subagent Prompt Template
 
 For each phase, spawn with this prompt:
 
 ```
-Execute phase {N} of the active quest.
+Execute phase {N} of the quest "{quest-name}".
 
-## Your Task
-Run the full plan-exec-verify cycle for this phase:
-1. If phase status is `pending`: plan the phase (research, create PLAN.md)
-2. If phase status is `planned` or `retrying`: execute the tasks (make commits)
-3. If phase status is `executed`: verify completion
+## Quest Context
+{QUEST.md summary — goal, repos, key dependencies}
 
-## Context Files
-- `.planning/QUEST.md` — Overall goal
-- `.planning/PHASES.md` — Phase list and status
-- `.planning/STATE.md` — Current position, retry count
-- `.planning/config.json` — Settings (maxRetries: 3)
-- `.planning/phases/{NN}-{name}/PLAN.md` — Task definitions (if planned)
-- `.planning/phases/{NN}-{name}/VERIFY.md` — Diagnosis (if retrying)
+## Phase Goal
+{Phase N goal from PHASES.md}
 
-## Rules
-- Make atomic commits per task (conventional commit format)
-- On verification failure: re-exec with diagnosis, up to maxRetries
-- On 3rd failure: return status=checkpoint with full diagnosis
-- Update PHASES.md and STATE.md after each step
-- **Before implementing crypto, signing, or wallet operations**: Check available MCP tools (mcp__aibtc__*) first. Use existing tools rather than reimplementing.
+## Previous Phases
+{Brief summary of completed phases — what was done, key commits}
 
-## Return Format
-Return a JSON summary:
+## Instructions
+Run the full phase lifecycle:
+1. If no PLAN.md exists in phases/{NN}-{name}/: research codebase, create PLAN.md
+2. Execute each task with atomic commits (conventional format)
+3. Verify: goal-backward check (artifacts exist, are substantive, are wired)
+4. If verify fails: fix and re-verify (up to 2 internal retries)
+
+Write PLAN.md to: {quest-dir}/phases/{NN}-{name}/PLAN.md
+
+Before implementing crypto, signing, or wallet operations: check available MCP tools first.
+
+Return JSON:
 {
-  "status": "completed" | "checkpoint" | "error",
+  "status": "completed" | "needs_retry" | "error",
   "phase": N,
-  "commits": ["sha1: message", ...],
+  "commits": ["sha: message", ...],
   "retries": 0,
-  "summary": "Brief description of what was done"
+  "summary": "Brief description",
+  "diagnosis": "Only if needs_retry — what went wrong and suggested fix"
 }
 ```
 
-## Loop Flow
+For retries, append:
 
 ```
-Orchestrator (lean, reads state files only)
-     │
-     ├─► Spawn subagent for Phase 1 ─► [fresh 200k context]
-     │        └── plan → exec → verify → write results
-     │        └── returns: {status: completed, commits: [...]}
-     │
-     ├─► Spawn subagent for Phase 2 ─► [fresh 200k context]
-     │        └── plan → exec → verify (fail) → re-exec → verify
-     │        └── returns: {status: completed, retries: 1}
-     │
-     └─► Spawn subagent for Phase 3 ─► [fresh 200k context]
-              └── plan → exec → verify (fail x3)
-              └── returns: {status: checkpoint, diagnosis: "..."}
+## Previous Attempt Diagnosis
+{Contents of DIAGNOSIS.md}
+
+Focus on fixing the identified issues. Do not redo completed work.
 ```
 
 ## Checkpoint Behavior
 
-When a subagent returns `status: checkpoint`:
+When a phase hits maxRetries:
 1. Stop the automation loop
-2. Display the diagnosis from the subagent
+2. Display the diagnosis
 3. Show options:
    - Review and fix manually, then `/quest-run` to continue
-   - Skip phase with `/quest-run {N+1}` to move on
-   - Adjust plan with `/quest-plan --force`
+   - Skip phase with `/quest-run {N+1}`
 
-## Events
+## Console Output
 
-The orchestrator emits:
-- `quest_run_started` — when loop begins (includes phase range)
-- `quest_run_phase_complete` — after each successful phase
-- `quest_run_checkpoint` — when stopping for human intervention
-- `quest_run_complete` — when all phases done
-
-Subagents emit phase-level events internally (phase_planned, phase_executing, phase_verified).
-
-## Prerequisites
-
-- Active quest (`.planning/` directory exists)
-- Quest status is `active`
-
-## Example Session
+Show progress as phases run:
 
 ```
-> /quest-run
-
-Running quest: Implement User Authentication
+Running quest: Cost Tracking
 Starting from phase 1 of 5
 
-Phase 1: Set up auth middleware
-  [subagent] Planning... 3 tasks created
-  [subagent] Executing... 2 commits
-  [subagent] Verifying... PASS
-  ✓ Phase 1 complete
+Phase 1: Add cost schema
+  Spawning subagent...
+  Completed (2 commits)
 
-Phase 2: Add login endpoint
-  [subagent] Planning... 4 tasks created
-  [subagent] Executing... 3 commits
-  [subagent] Verifying... FAIL (missing validation)
-  [subagent] Re-executing with diagnosis...
-  [subagent] Verifying... PASS
-  ✓ Phase 2 complete (1 retry)
+Phase 2: Capture costs
+  Spawning subagent...
+  Completed (3 commits, 1 retry)
 
-Phase 3: Add session management
-  [subagent] Planning... 2 tasks created
-  [subagent] Executing... 1 commit
-  [subagent] Verifying... PASS
-  ✓ Phase 3 complete
+Phase 3: Add margin query
+  Spawning subagent...
+  needs_retry → retrying (attempt 2/3)...
+  Completed (2 commits)
 
-...
-
-Quest complete! 5/5 phases, 1 retry total.
+Quest complete! 5/5 phases, 2 retries total.
+Use /quest-complete to archive.
 ```
+
+## Context Isolation
+
+**Why subagents per phase?** Each phase can consume significant context during planning (codebase exploration), execution (file edits), and verification (artifact checking). Running all phases in one context leads to token exhaustion.
+
+**How it works:**
+- The orchestrator (this skill) stays lean — only reads state files
+- Each phase runs in a fresh 200k context subagent
+- Subagent reads quest state from files, does all work, writes results back
+- Only a JSON summary returns to the orchestrator
+- Files in the quest directory serve as memory between phases
 
 ## Token Budget
 
@@ -175,4 +174,9 @@ Quest complete! 5/5 phases, 1 retry total.
 |-----------|--------|
 | Orchestrator | ~10% (reads state files, spawns subagents) |
 | Phase subagent | Fresh 200k per phase |
-| State persistence | `.planning/` files (no token cost) |
+| State persistence | Quest directory files (no token cost) |
+
+## Prerequisites
+
+- Active quest with `Status: active`
+- At least one phase with status `pending`

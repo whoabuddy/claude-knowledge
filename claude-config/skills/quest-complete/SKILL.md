@@ -1,12 +1,12 @@
 ---
 name: quest-complete
-description: Mark the current quest as complete
-allowed-tools: Bash, Read, Write, Edit
+description: Mark the current quest as complete and archive it
+allowed-tools: Bash, Read, Write, Edit, Glob
 ---
 
 # Quest Complete Skill
 
-Mark the current quest as complete and emit completion event.
+Mark the active quest as complete and archive it.
 
 ## Usage
 
@@ -16,68 +16,49 @@ Mark the current quest as complete and emit completion event.
 
 ## Behavior
 
-1. Verify all phases are completed:
-   - Read `PHASES.md` and check all phases have status `completed`
-   - If any phases are incomplete, show warning and ask for confirmation
-2. Update `QUEST.md`:
-   - Set Status to `completed`
-   - Add completion timestamp
-3. Update `STATE.md`:
-   - Add completion entry to decisions log
-   - Record final stats (phases, retries, etc.)
-4. Emit `quest_completed` event:
-   ```bash
-   ~/.claude/scripts/quest/emit-event.sh quest_completed '"questId":"<id>","name":"<name>","phasesCompleted":<n>,"totalRetries":<n>'
-   ```
-5. Archive the quest:
+1. **Find active quest:**
+   - Look for `.planning/*/QUEST.md` files with `Status: active`
+   - If none found: report no active quest
+   - If multiple: ask user which to complete
+
+2. **Check phase completion:**
+   - Read PHASES.md and check all phases
+   - If all phases are `completed`: proceed
+   - If any phases are `pending` or `checkpoint`: warn and ask for confirmation
+     ```
+     Warning: 2 phases are not completed:
+     - Phase 4: Add password reset (pending)
+     - Phase 5: Write documentation (checkpoint)
+
+     Complete anyway? Incomplete phases will be marked as skipped.
+     ```
+
+3. **Update quest files:**
+   - `QUEST.md`: Set `Status: completed`, add `Completed: YYYY-MM-DD`
+   - `STATE.md`: Add completion entry with summary
+
+4. **Archive the quest:**
    - Create `.planning/archive/` if it doesn't exist
-   - Move `.planning/` contents to `.planning/archive/<quest-name>/`
-   - Keep `.planning/archive/` for future quests
-6. Display completion summary
+   - Move entire quest directory to `.planning/archive/`
+   - e.g., `.planning/2026-02-16-cost-tracking/` → `.planning/archive/2026-02-16-cost-tracking/`
 
-## Archiving
+5. **Display completion summary:**
+   ```
+   Quest Complete: Cost Tracking
 
-Completed quests are stored in `.planning/archive/<quest-name>/`:
+   Phases: 5/5 completed
+   Total Retries: 2
 
-```
-.planning/
-└── archive/
-    ├── arc-productive-loop/
-    ├── arc-self-audit/
-    └── user-authentication/
-```
-
-This keeps the root directory clean while preserving quest history for reference.
-
-## Completion Summary
-
-```
-Quest Complete: Implement User Authentication
-
-Phases: 5/5 completed
-Total Retries: 2
-Duration: 3 days
-
-XP Awarded: 500
-- Base quest completion: 300
-- Phase bonuses: 150
-- Efficiency bonus: 50
-
-Use /quest-create to start a new quest.
-```
+   Archived to: .planning/archive/2026-02-16-cost-tracking/
+   Use /quest-create to start a new quest.
+   ```
 
 ## Prerequisites
 
-- Active quest (`.planning/` directory exists)
-- Quest status is `active` (not already completed or paused)
+- At least one quest directory exists in `.planning/`
+- Quest status is `active`
 
-## Incomplete Quest Warning
+## Related Commands
 
-If phases remain incomplete:
-```
-Warning: 2 phases are not completed:
-- Phase 4: Add password reset (executed)
-- Phase 5: Write documentation (pending)
-
-Complete anyway? This will mark all phases as skipped.
-```
+- `/quest-create` — Start a new quest
+- `/quest-status` — Check progress
