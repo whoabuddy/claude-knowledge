@@ -9,6 +9,12 @@
 DATE="${1:-$(date +%Y-%m-%d)}"
 DEV_DIR="${2:-$HOME/dev}"
 
+# Additional directories to scan for git repos (space-separated)
+EXTRA_DIRS="$HOME/arc"
+
+# Additional GitHub users to query Events API for (space-separated)
+EXTRA_GH_USERS="arc0btc"
+
 # Setup logging
 LOG_DIR="${HOME}/logs/daily/raw"
 TIMESTAMP=$(date +%Y-%m-%dT%H-%M-%S)
@@ -82,25 +88,36 @@ get_repo_visibility() {
   fi
 }
 
-# Find all git repos and check for commits
-while IFS= read -r gitdir; do
-  repo=$(dirname "$gitdir")
-  repo_name=$(echo "$repo" | sed "s|$HOME/dev/||")
-
-  # Get author email from repo's git config
-  author_email=$(cd "$repo" && git config user.email 2>/dev/null)
-
-  # Get commits for the date, filtered by author
-  commits=$(cd "$repo" && git log --oneline --author="$author_email" --since="$DATE 00:00:00" --until="$DATE 23:59:59" 2>/dev/null)
-
-  if [ -n "$commits" ]; then
-    count=$(echo "$commits" | wc -l)
-    visibility=$(get_repo_visibility "$repo_name")
-    echo "### $repo_name ($visibility) - $count commits"
-    echo "$commits"
-    echo ""
+# Build list of all directories to scan
+ALL_SCAN_DIRS="$DEV_DIR"
+for extra in $EXTRA_DIRS; do
+  if [ -d "$extra" ]; then
+    ALL_SCAN_DIRS="$ALL_SCAN_DIRS $extra"
   fi
-done < <(find "$DEV_DIR" -type d -name ".git" 2>/dev/null | sort)
+done
+
+# Find all git repos and check for commits
+for scan_dir in $ALL_SCAN_DIRS; do
+  while IFS= read -r gitdir; do
+    repo=$(dirname "$gitdir")
+    # Derive display name: strip home prefix, use last path components
+    repo_name=$(echo "$repo" | sed "s|$HOME/||")
+
+    # Get author email from repo's git config
+    author_email=$(cd "$repo" && git config user.email 2>/dev/null)
+
+    # Get commits for the date, filtered by author
+    commits=$(cd "$repo" && git log --oneline --author="$author_email" --since="$DATE 00:00:00" --until="$DATE 23:59:59" 2>/dev/null)
+
+    if [ -n "$commits" ]; then
+      count=$(echo "$commits" | wc -l)
+      visibility=$(get_repo_visibility "$repo_name")
+      echo "### $repo_name ($visibility) - $count commits"
+      echo "$commits"
+      echo ""
+    fi
+  done < <(find "$scan_dir" -maxdepth 3 -type d -name ".git" 2>/dev/null | sort)
+done
 
 echo "=== GitHub Activity ==="
 echo ""
@@ -253,6 +270,71 @@ if command -v gh &> /dev/null; then
   else
     echo "None"
   fi
+
+  # === Additional GitHub Users ===
+  for EXTRA_USER in $EXTRA_GH_USERS; do
+    echo ""
+    echo "=== Activity from ${EXTRA_USER} (GitHub Events API) ==="
+    echo ""
+
+    EXTRA_EVENTS=$(gh api "/users/${EXTRA_USER}/events" --paginate 2>/dev/null)
+
+    echo "### ${EXTRA_USER} - Push Events"
+    extra_pushes=$(echo "$EXTRA_EVENTS" | jq -r --arg date "$DATE" '
+      .[] | select(.type == "PushEvent") |
+      select(.created_at | startswith($date)) |
+      "- " + .repo.name + " (" + (.payload.size|tostring) + " commits): " + (.payload.commits | map(.message | split("\n")[0]) | join("; "))
+    ' 2>/dev/null)
+    if [ -n "$extra_pushes" ]; then
+      echo "$extra_pushes"
+    else
+      echo "None"
+    fi
+    echo ""
+
+    echo "### ${EXTRA_USER} - PRs"
+    extra_prs=$(echo "$EXTRA_EVENTS" | jq -r --arg date "$DATE" '
+      .[] | select(.type == "PullRequestEvent") |
+      select(.created_at | startswith($date)) |
+      "- " + .repo.name + "#" + (.payload.pull_request.number|tostring) + ": " + .payload.action + " - " + .payload.pull_request.title
+    ' 2>/dev/null)
+    if [ -n "$extra_prs" ]; then
+      echo "$extra_prs"
+    else
+      echo "None"
+    fi
+    echo ""
+
+    echo "### ${EXTRA_USER} - Issues"
+    extra_issues=$(echo "$EXTRA_EVENTS" | jq -r --arg date "$DATE" '
+      .[] | select(.type == "IssuesEvent") |
+      select(.created_at | startswith($date)) |
+      "- " + .repo.name + "#" + (.payload.issue.number|tostring) + ": " + .payload.action + " - " + .payload.issue.title
+    ' 2>/dev/null)
+    if [ -n "$extra_issues" ]; then
+      echo "$extra_issues"
+    else
+      echo "None"
+    fi
+    echo ""
+
+    echo "### ${EXTRA_USER} - Repos Created/Forked"
+    extra_creates=$(echo "$EXTRA_EVENTS" | jq -r --arg date "$DATE" '
+      .[] | select(.type == "CreateEvent" or .type == "ForkEvent") |
+      select(.created_at | startswith($date)) |
+      if .type == "ForkEvent" then
+        "- Forked " + .repo.name + " -> " + .payload.forkee.full_name
+      else
+        "- Created " + .repo.name + ": " + .payload.ref_type + " " + (.payload.ref // "(default branch)")
+      end
+    ' 2>/dev/null)
+    if [ -n "$extra_creates" ]; then
+      echo "$extra_creates"
+    else
+      echo "None"
+    fi
+    echo ""
+  done
 else
   echo "gh CLI not available - skipping GitHub activity"
 fi

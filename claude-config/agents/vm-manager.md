@@ -78,6 +78,12 @@ VBoxManage controlvm "vm-name" poweroff
 cat /etc/netplan/*.yaml
 
 # Edit netplan (replace enp0s3 with actual interface name)
+sudo nano /etc/netplan/50-cloud-init.yaml
+192.168.1.12 -> spark0btc
+192.168.1.13 -> iris0btc
+192.168.1.14 -> loom0btc
+192.168.1.15 -> forge0btc
+
 sudo tee /etc/netplan/01-static.yaml << 'EOF'
 network:
   version: 2
