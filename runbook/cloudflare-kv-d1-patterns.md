@@ -48,6 +48,26 @@ Non-authoritative D1 co-writes (mirrors, secondary indexes, analytics tables) sh
 
 Source: `feedback_after_pattern_for_additive_d1_mirrors`. **Exception**: when the mirror is *itself* the authoritative durable state (e.g., P2 `last_check_in_at` is the rate-limit truth post-quest), it must be synchronous — the response path consumes it.
 
+### Emit + monitor the full event set, not just the happy-path trip event
+
+A circuit breaker or rate-limiter ships at least three logical states: **tripped**, **suppressed-trip-due-to-degraded-store**, and **reset**. Each gets its own structured event. Test plans must include the full set in the post-merge monitoring checklist — operators reading worker-logs grep on event names, not on absence-of-success.
+
+For lp#894's circuit breaker, that's five events:
+
+| Event | What it signals | Severity |
+|---|---|---|
+| `circuit-breaker.opened` | Threshold tripped — protection active | warn (expected during incidents) |
+| `circuit-breaker.check_failed` | `caches.default.match` threw — fail-open path | warn |
+| `circuit-breaker.binding_missing` | `env.RATE_LIMIT_*` undefined — **config drift in production** | page |
+| `circuit-breaker.record_failed` | Binding tripped + marker `cache.put` failed — **breaker silently bypassed per-colo** | page |
+| `circuit-breaker.reset_failed` | Marker delete on success path failed — recovers on TTL anyway | warn |
+
+The `record_failed` event is the load-bearing one to monitor: it's the only signal that the breaker's "should-be-open" state isn't being observed. Fail-open is the documented design, but operators need the metric to know it's happening — otherwise a config-drift or transient cache failure silently disables the protection.
+
+**Anti-pattern**: PR test plans that list only the "trip" event and miss the "trip-write-failed" / "binding-missing" events. The fail-open behavior bypasses protection without operators having a metric to detect it. Spotted in lp#894's initial test-plan checklist; surfaced as [aibtcdev/landing-page#895](https://github.com/aibtcdev/landing-page/issues/895).
+
+**Log-field names should describe what they are, not their value**. `thresholdSeconds: 60` reads as "the failure-rate window time" but the value passed is the cache-marker TTL — wholly separate from the binding's `{ limit: 10, period: 60 }`. They happen to be 60s today; if anyone tunes the marker TTL independently the log will silently misalign with on-call routing rules anchored on this field. Use `markerTtlSeconds` (or emit the full set: `bindingLimit`, `bindingPeriodSeconds`, `markerTtlSeconds`) so future-you can reconstruct the configured state at log-parse time.
+
 ## Pattern catalog
 
 ### Pattern: KV mutex / KV-RMW → `caches.default` single-flight
@@ -394,6 +414,46 @@ The Codex P1 review flagged this as a regression. Counter-argument (accepted, do
 > The new semantic is more conservative — a relay seeing 10 failures/min is degraded regardless of whether those failures are interleaved with successes. Acceptable for the circuit-breaker semantic. The 60s window self-heals naturally after a quiet period.
 
 The format that worked: a single `design-call.md` file in the phase folder with one paragraph per option, a recommendation with rationale, and a paragraph on what would change the recommendation. Reviewer threads can link to it instead of re-litigating in the inline thread.
+
+## When a finding misses the merge window — file a post-merge follow-up issue
+
+Body-only / log-string-only / docs-only fixes shouldn't block fast merges. But substantive observations that land after the maintainer has decided to merge tend to die in inline thread history. The operator-friendly move is to file a focused tracking issue: **scope-bounded, decision-asking, with a small-PR fix offer.**
+
+This converts in-PR conversation history into a trackable workitem surface that operators and on-call can act on. Pattern instances from this quest:
+
+| Source PR | Follow-up issue | Scope |
+|---|---|---|
+| `aibtcdev/landing-page#883` | `aibtcdev/landing-page#885` | Retry cadence + KV-fail observability — 2 non-blocking edge cases surfaced post-merge |
+| `aibtcdev/landing-page#894` | `aibtcdev/landing-page#895` | Observability monitoring set + log-field rename + behavioral contract sentence |
+
+Both issues are body-only / log-string-only / contract-sentence fixes. Neither blocked the merge. Both became trackable workitems instead of buried thread comments.
+
+**Issue template that worked:**
+
+```markdown
+## Summary
+
+Three [body-only / log-string-only / docs-only] follow-ups from my [#PR pre-merge review]
+and [reviewer's cycle N advisory] that landed within minutes of the merge and didn't
+make the fixup commit. None touch executable code; all are operational hygiene worth
+landing before the post-merge gate signals are wired into worker-logs queries / on-call alerts.
+
+Scope-bounded: this issue does NOT re-litigate [un-addressed inline findings X + Y] —
+those need a maintainer disposition (accept-as-intentional or fix), not duplication here.
+
+## 1. [substantive finding 1, with code/log evidence + suggested change]
+## 2. [substantive finding 2, with code/log evidence + suggested change]
+## 3. [substantive finding 3, with code/log evidence + suggested change]
+
+## Offer
+
+Happy to draft (1) + (2) + (3) as a single PR if the dispositions are "land as suggested."
+Will pause if any are "WONTFIX" or want re-shaped first.
+```
+
+The "Offer" section is load-bearing — it converts the issue from "complaint" to "ready-to-execute work" and gives the maintainer a one-word disposition (accept / WONTFIX / reshape) instead of a synthesis task.
+
+**When to file vs. when to fixup in-PR**: if the merge is in the next hour and the maintainer is actively shipping, file the follow-up. If the merge is days away and the finding is substantive, comment inline.
 
 ## Worked examples — file index
 
