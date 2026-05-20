@@ -22,6 +22,7 @@ All persistent knowledge lives in the knowledge base repo:
 ### Deployment & Build
 
 - **Cloudflare**: Do NOT run `npm run deploy`. Use dry run to verify build, then commit and push for automatic deployment.
+- **KV/D1 patterns**: When to reach for KV vs D1 vs `caches.default` vs Durable Objects vs `ratelimits` binding, with bad/good worked examples — `runbook/cloudflare-kv-d1-patterns.md`. Captures observability discipline (full event set monitoring, partial-hour D1 analytics anti-pattern) and the post-merge follow-up issue pattern.
 - **Release Please**: Use for production repos - automates semver + changelog from conventional commits
   - Setup: `runbook/release-please-setup.md`
   - Requires: conventional commits, protected main branch, PR workflow
