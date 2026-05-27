@@ -42,6 +42,31 @@ Migration comments like `-- Replaces KV pattern X` describe intent, not what liv
 
 Source: `feedback_d1_schema_aspirational_vs_live`. Killer example from the May 2026 quest: `migrations/012_agent_inbox_stats.sql` was applied for weeks before the *read* side flipped — the counter table was being maintained on writes but nothing was reading from it.
 
+### A missing index is the #1 D1/DO cost driver — and indexes go missing silently
+
+This was THE root cause of the May 2026 landing-page bill (and the same class of bug then found in agent-news NewsDO). **At small scale, a single unindexed hot query is almost always the dominant cost — not volume, not a leak.** Cloudflare bills rows *scanned*; an unindexed `WHERE`/`ORDER BY` scans the whole table on every call. landing-page's inbox list read ~6,032 rows/call × ~520K calls/day = **~96% of all D1 rows-read** (~4.5B/day), purely because the index that should have served it was absent from the live DB.
+
+**Two mechanisms drop an index while the schema still "looks" complete:**
+
+1. **SQLite table rebuild** (the `CREATE TEMP → DROP TABLE → CREATE → INSERT` dance used to drop a `NOT NULL`, since SQLite has no `ALTER COLUMN`). `DROP TABLE` drops the table's indexes with it. If the rebuild migration only recreates *some* indexes, the rest are gone. landing-page migration 008 rebuilt 6 tables and recreated only the `agents` indexes — `inbox_messages`/`claims`/`vouches`/`balances` lost everything. `wrangler d1 migrations list` still said "No migrations to apply."
+2. **Version-gated cold-start migration runners** (DO-embedded SQLite) that advance the version counter even when a statement throws (errors caught + logged). A silently-failed `CREATE INDEX` is **never retried** — the counter has moved past it. NewsDO's own comments record this: *"migration 10 failed silently on production."* And DO `console.*` does **not** reach worker-logs, so the failure is invisible.
+
+**Diagnose before optimizing (this is non-negotiable — grep-based guessing burned a month):**
+
+- **D1**: `wrangler d1 insights <db> --sort-by reads --sort-type sum --limit 20 --json` ranks queries by rows-read (the hot query is usually obvious). Then `EXPLAIN QUERY PLAN <query>` on the **remote** DB — `SCAN` or `USE TEMP B-TREE FOR ORDER BY` = missing/unusable index; you want `SEARCH … USING INDEX …`. Confirm with `SELECT name FROM sqlite_master WHERE type='index'` against the live remote DB — never trust the migration files.
+- **The diagnostic metric is rows-read ÷ read-queries (rows/query).** At <1K agents it should be single/double digits. landing-page was at **2,452 rows/query** pre-fix → **6** post-fix. It's independent of traffic volume, so it isolates the index from call-volume noise.
+- **DO-embedded SQLite has no external `insights`**, and console doesn't reach worker-logs. Add a read-only **`schema-health` endpoint** that diffs live `sqlite_master` against an `EXPECTED_INDEXES` set and returns the missing names + row counts. That's the DO equivalent of `insights`, and it doubles as the recurrence guardrail. (`aibtcdev/agent-news` `GET /api/config/schema-health`.)
+
+**Fix + prevent:**
+
+- **Index DDL belongs in the always-re-applied, idempotent base schema** (`CREATE INDEX IF NOT EXISTS`, run on every cold start / every deploy), **never behind a one-shot version gate or inside a rebuild migration.** That makes indexes self-heal. After *any* SQLite table rebuild, recreate every index the table had.
+- **Guardrail**: a `schema-health` endpoint (or CI check) that diffs live `sqlite_master` against the expected index set. Ship it to every D1/DO app so a future rebuild can't silently re-drop indexes.
+- A UNIQUE index that was missing for a while may fail to recreate (duplicates accumulated) — restore it **non-unique** in the cost fix and dedup + re-add the constraint as a separate data task. (landing-page `idx_inbox_payment_txid`: 16 dup groups.)
+
+**Pricing note**: D1 and Durable-Object SQLite each get a **separate** 25 B rows-read/month included allowance on Workers Paid, then `$0.001/M`. A full-scan hot path blows through it; a correct index keeps you inside the free tier.
+
+Source: May 2026 landing-page D1 attribution (PR `aibtcdev/landing-page#930`, −99.8% rows-read) and the NewsDO follow-on (`aibtcdev/agent-news#827`). The KV→D1 migration "traded a KV spike for a D1 spike" precisely because the inbox went from an O(1) KV key fetch to an O(N) unindexed scan — migrating storage backends does **not** fix a missing-index problem, it relocates it.
+
 ### Use `after()` for additive D1 mirrors
 
 Non-authoritative D1 co-writes (mirrors, secondary indexes, analytics tables) should run in `next/server` `after()` so they don't add response latency. The authoritative store (`KV.put` or the primary `D1.run`) stays on the response path; the mirror writes happen after.
@@ -477,7 +502,12 @@ Real files to read for the full pattern:
 4. Read the previous-previous-hour bucket. Read the day-so-far. Compare to baseline.
 5. **If the hourly trend doesn't show a visible cliff at the merge boundary, the change didn't land production cost** — even if the code is verified active. The hot path you optimized may not have been the dominant cost driver.
 
-When the hourly trend stays flat after structurally-correct code merges, the next step is **D1 SQL-prefix attribution**: a sampled binding wrapper that logs SQL prefix + rowsScanned + wallTime to worker-logs at ~1% sample, aggregated over 24-48h. Grep-attribution gives confident-but-often-wrong answers; instrumented attribution gives real ones.
+When the hourly trend stays flat after structurally-correct code merges, you optimized the wrong query. Get real attribution **before** writing any more code:
+
+- **D1: `wrangler d1 insights <db> --sort-by reads --json`** is the fast path — zero code, ranks queries by rows-read directly. Then `EXPLAIN QUERY PLAN` (remote) + live `sqlite_master` on the top query. This is what finally found the May 2026 driver in minutes after the campaign spent weeks on grep-based guesses; the originally-planned sampled binding wrapper turned out to be unnecessary for D1. (See § A missing index is the #1 D1/DO cost driver.)
+- **DO-embedded SQLite has no `insights`** — there a sampled binding-wrapper that logs SQL prefix + `meta.rowsRead` + wallMs to worker-logs at ~1%, OR a `schema-health` endpoint, is the substitute.
+
+Grep-attribution gives confident-but-often-wrong answers; `insights`/EXPLAIN give real ones.
 
 ## Quest of origin
 
